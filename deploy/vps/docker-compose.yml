@@ -1,0 +1,65 @@
+name: sentinel
+
+services:
+  backend:
+    image: ghcr.io/borgesailton/borgtechsentinel-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.6
+    environment:
+      SENTINEL_ENVIRONMENT: prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina no .env da VPS}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=20
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - wal_buffers=4MB
+      - -c
+      - max_wal_size=256MB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [internal]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    mem_limit: 64m
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?defina no .env da VPS}
+    depends_on: [backend]
+    networks: [internal]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
